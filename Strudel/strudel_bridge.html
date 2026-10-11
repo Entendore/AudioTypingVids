@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Strudel Bridge</title>
+</head>
+
+<body>
+  <!-- Load Strudel from unpkg -->
+  <script src="https://unpkg.com/strudel@latest/dist/strudel.min.js"></script>
+  <script>
+    let audioContext = null;
+    let masterGain = null;
+    let analyser = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let activeStrudel = null;
+
+    async function initAudio() {
+      if (audioContext) return true;
+
+      // Attempt to get Strudel's internal AudioContext, or create a fallback
+      try
+      {
+        if (typeof strudel !== 'undefined' && strudel.getAudioContext)
+        {
+          audioContext = strudel.getAudioContext();
+        } else if (typeof getAudioContext === 'function')
+        {
+          audioContext = getAudioContext();
+        } else
+        {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+      } catch (e)
+      {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      masterGain = audioContext.createGain();
+      masterGain.gain.value = 0.8;
+
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+
+      masterGain.connect(analyser);
+      analyser.connect(audioContext.destination);
+      return true;
+    }
+
+    // Exposed JS bridge functions called by Python's StrudelAudio class
+    window.isReady = function () {
+      return typeof strudel !== 'undefined';
+    };
+
+    window.resumeAudioContext = function () {
+      if (audioContext && audioContext.state === 'suspended')
+      {
+        audioContext.resume();
+      }
+    };
+
+    window.setMasterVolume = function (vol) {
+      if (masterGain)
+      {
+        // Convert 0-100 slider to 0.0-1.0 gain
+        masterGain.gain.value = Math.max(0, Math.min(1, vol / 100.0));
+      }
+    };
+
+    window.strudelPlay = async function (code) {
+      try
+      {
+        await initAudio();
+        window.resumeAudioContext();
+
+        // Evaluate and play the Strudel code
+        // Strudel's API evaluates code and returns a pattern/handle
+        if (typeof strudel !== 'undefined')
+        {
+          if (activeStrudel && activeStrudel.stop) activeStrudel.stop();
+          activeStrudel = await strudel.evaluate(code);
+          if (activeStrudel && activeStrudel.play)
+          {
+            activeStrudel.play();
+          }
+        }
+      } catch (e)
+      {
+        console.error("Strudel Play Error:", e);
+      }
+    };
+
+    window.strudelStop = function () {
+      try
+      {
+        if (typeof strudel !== 'undefined' && strudel.stop)
+        {
+          strudel.stop();
+        }
+        if (activeStrudel && activeStrudel.stop)
+        {
+          activeStrudel.stop();
+        }
+      } catch (e)
+      {
+        console.error("Strudel Stop Error:", e);
+      }
+    };
+
+    window.getAudioLevels = function () {
+      if (!analyser) return [];
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(dataArray);
+      // Convert to 0.0 - 1.0 floats for Python
+      return Array.from(dataArray).map(v => v / 255.0);
+    };
+
+    window.startRecording = function () {
+      try
+      {
+        if (!audioContext) return false;
+
+        // Create a media stream destination to capture the audio
+        const dest = audioContext.createMediaStreamDestination();
+        masterGain.connect(dest); // Route master gain to the recorder
+
+        mediaRecorder = new MediaRecorder(dest.stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunks.push(event.data);
+        };
+
+        mediaRecorder.start();
+        return true;
+      } catch (e)
+      {
+        console.error("Recording Start Failed:", e);
+        return false;
+      }
+    };
+
+    window.stopRecording = function () {
+      return new Promise((resolve) => {
+        if (!mediaRecorder || mediaRecorder.state === 'inactive')
+        {
+          resolve(null);
+          return;
+        }
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunks, { type: 'audio/webm' });
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            // Return Base64 Data URL to Python
+            resolve(reader.result);
+          };
+          reader.readAsDataURL(blob);
+        };
+
+        mediaRecorder.stop();
+      });
+    };
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,22 @@
+{
+  "master_volume": 0.85,
+  "base_duration": 16.0,
+  "typing_speed": 28.0,
+  "wave_amplitude": 0.42,
+  "particles_enabled": true,
+  "line_highlight": true,
+  "vu_meter": true,
+  "beat_sensitivity": 0.5,
+  "normalize_audio": true,
+  "mirror_waveform": true,
+  "fill_waveform": true,
+  "beat_flash": true,
+  "show_spectrum": false,
+  "show_progress_bar": true,
+  "show_code_glow": true,
+  "font_size_override": 0,
+  "particle_count": 80,
+  "theme_name": "Midnight Blue",
+  "preset_name": "YouTube (1920x1080)",
+  "match_typing_to_music": true
+}
